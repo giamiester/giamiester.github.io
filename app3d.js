@@ -323,6 +323,7 @@ function pointerToNdc(event) {
 }
 
 function bindUi() {
+  const searchInput=document.querySelector('#object-search'),suggestionBox=document.querySelector('#search-suggestions');
   document.querySelector('#track-button').addEventListener('click',()=>{
     if(!selected){toast('The Sun is always in view');return;}
     if(tracked.has(selected)){toast('Already in your tracking list');return;}
@@ -331,9 +332,14 @@ function bindUi() {
   });
   document.querySelectorAll('.view-btn').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.view-btn').forEach(other=>other.classList.toggle('active',other===button));labelsVisible=button.dataset.mode==='labels';render();}));
   document.querySelector('#open-search').addEventListener('click',()=>{document.querySelector('#search-form').classList.add('open');document.querySelector('#object-search').focus();});
-  document.querySelector('#close-search').addEventListener('click',()=>{document.querySelector('#search-form').classList.remove('open');document.querySelector('#object-search').value='';document.querySelector('#search-hint').textContent='SEARCH JPL SMALL-BODY DATABASE';});
+  document.querySelector('#close-search').addEventListener('click',()=>{document.querySelector('#search-form').classList.remove('open');document.querySelector('#object-search').value='';document.querySelector('#search-hint').textContent='SEARCH JPL SMALL-BODY DATABASE';hideSuggestions();});
   document.querySelector('#search-form').addEventListener('submit',lookupObject);
-  document.querySelector('#object-search').addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelector('#close-search').click();});
+  searchInput.addEventListener('input',scheduleSuggestions);
+  searchInput.addEventListener('focus',()=>{if(searchInput.value.trim().length>=2)scheduleSuggestions();});
+  searchInput.addEventListener('keydown',handleSearchKeydown);
+  suggestionBox.addEventListener('mousedown',event=>{const row=event.target.closest('.suggestion[data-pdes]');if(!row)return;event.preventDefault();selectSuggestion(row);});
+  suggestionBox.addEventListener('mousemove',event=>{const row=event.target.closest('.suggestion');if(row)setActiveSuggestion([...suggestionBox.querySelectorAll('.suggestion')].indexOf(row));});
+  document.addEventListener('click',event=>{if(!event.target.closest('.search-form'))hideSuggestions();});
   document.querySelector('#zoom-reset').addEventListener('click',resetCamera);
   canvas.addEventListener('click',event=>{
     pointerToNdc(event);raycaster.setFromCamera(pointer,camera);
@@ -353,16 +359,20 @@ function bindUi() {
 
 async function lookupObject(event) {
   event.preventDefault();const input=document.querySelector('#object-search'),hint=document.querySelector('#search-hint'),query=input.value.trim();if(!query)return;
+  hideSuggestions();await resolveQuery(query,input,hint);
+}
+
+async function resolveQuery(query,input,hint){
   const known=[...bodyData,...customObjects.values()].find(body=>body.name.toLowerCase()===query.toLowerCase()||body.code.toLowerCase()===query.toLowerCase());
   if(known){tracked.add(known.code);if(!views.has(known.code)){const view=addBodyView(known);updateOrbit(view,jdNow(simDate));}selectBody(known.code);hint.textContent=`${known.name.toUpperCase()} ADDED`;input.value='';return;}
   hint.textContent='QUERYING JPL SBDB…';input.disabled=true;
   try{
     if(window.location.protocol==='file:')throw new Error('Open the site on GitHub Pages with the JPL proxy configured, or on Cloudflare Pages.');
-    const proxyUrl=document.querySelector('meta[name="jpl-proxy-url"]')?.content.trim();
-    const url=proxyUrl?new URL(proxyUrl):new URL('/api/sbdb',window.location.origin);url.searchParams.set('query',query);
+    const url=proxyEndpoint();url.searchParams.set('query',query);
     const response=await fetch(url,{headers:{Accept:'application/json'}});let data;
     try{data=await response.json();}catch{throw new Error(response.status===404?'No JPL proxy found. Set jpl-proxy-url or deploy the site on Cloudflare Pages.':'The JPL lookup returned an unreadable response.');}
-    if(!response.ok)throw new Error(data.error||`JPL lookup failed (${response.status}).`);if(data.error)throw new Error(data.error);if(data.list)throw new Error('Multiple matches. Try a numbered designation, like 433.');
+    if(data.list&&data.list.length){const matches=data.list.map(entry=>({name:entry.name||entry.pdes,pdes:entry.pdes||entry.name})).filter(item=>item.pdes||item.name);renderSuggestions(matches);hint.textContent=`${data.list.length} JPL MATCHES - PICK ONE`;return;}
+    if(!response.ok)throw new Error(data.error||`JPL lookup failed (${response.status}).`);if(data.error)throw new Error(data.error);
     const orbit=Object.fromEntries((data.orbit?.elements||[]).map(item=>[item.name,Number(item.value)]));
     if(!Number.isFinite(orbit.e)||!Number.isFinite(orbit.i)||!Number.isFinite(orbit.om)||!Number.isFinite(orbit.w))throw new Error('JPL did not return enough orbital elements.');
     const body={code:`sbdb-${data.object.spkid||data.object.des}`,name:data.object.fullname||data.object.name||data.object.des,type:data.object.kind?.toUpperCase()||'SMALL BODY',kind:'small-body',color:'#b8d2e8',radius:4,fact:'Approximate osculating orbit from JPL Small-Body Database.',elements:{e:orbit.e,i:orbit.i,node:orbit.om,w:orbit.w,a:orbit.a,q:orbit.q,tp:orbit.tp,epoch:Number(data.orbit.epoch),ma:orbit.ma,n:orbit.n}};
@@ -370,6 +380,85 @@ async function lookupObject(event) {
     customObjects.set(body.code,body);tracked.add(body.code);const view=addBodyView(body);updateOrbit(view,jdNow(simDate));selectBody(body.code);input.value='';hint.textContent='JPL ORBIT DATA LOADED';
   }catch(error){const message=String(error.message||'No match found');hint.textContent=message.toLowerCase().includes('fetch')?'CANNOT REACH JPL PROXY. CHECK ITS URL AND CORS SETTINGS.':message.replace(/\s+/g,' ').slice(0,88).toUpperCase();}
   finally{input.disabled=false;}
+}
+
+const suggestionCache=new Map();let suggestionTimer=0,suggestionController=null,suggestionItems=[],activeSuggestion=-1,suggestionToken=0;
+function proxyEndpoint(){const configured=document.querySelector('meta[name="jpl-proxy-url"]')?.content.trim();return configured?new URL(configured):new URL('/api/sbdb',window.location.origin);}
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
+function cleanQuery(value){return value.replace(/[*?%_\\\[\]]/g,'').replace(/\s+/g,' ').trim();}
+function scheduleSuggestions(){
+  clearTimeout(suggestionTimer);const raw=document.querySelector('#object-search').value;
+  if(cleanQuery(raw).length<2){hideSuggestions();return;}
+  suggestionTimer=setTimeout(()=>loadSuggestions(raw),280);
+}
+async function loadSuggestions(raw){
+  const query=cleanQuery(raw);if(query.length<2){hideSuggestions();return;}
+  const token=++suggestionToken,key=query.toLowerCase(),cached=suggestionCache.get(key);
+  if(cached){renderSuggestions(cached);return;}
+  if(suggestionController)suggestionController.abort();
+  const controller=new AbortController();suggestionController=controller;
+  const timer=setTimeout(()=>controller.abort(),8000);
+  renderSuggestions(null,'QUERYING JPL…');
+  try{
+    const url=proxyEndpoint();url.searchParams.set('query',`${query}*`);
+    const response=await fetch(url,{headers:{Accept:'application/json'},signal:controller.signal});
+    const data=JSON.parse(await response.text());
+    if(token!==suggestionToken)return;
+    const items=(data.list||[]).map(entry=>({name:entry.name||entry.pdes||'',pdes:entry.pdes||entry.name||''}));
+    if(!items.length&&data.object)items.push({name:data.object.fullname||data.object.des||'',pdes:data.object.des||''});
+    const ranked=rankSuggestions(items,query).slice(0,9);
+    suggestionCache.set(key,ranked);
+    renderSuggestions(ranked);
+  }catch(error){
+    if(error.name==='AbortError'||token!==suggestionToken)return;
+    renderSuggestions([],'COULD NOT REACH JPL PROXY');
+  }finally{clearTimeout(timer);if(suggestionController===controller)suggestionController=null;}
+}
+function rankSuggestions(items,query){
+  const q=query.toLowerCase();
+  const rank=item=>{const name=item.name.trim().toLowerCase(),pdes=item.pdes.trim().toLowerCase();
+    if(pdes===q||name===q)return 0;
+    if(pdes.startsWith(q))return 1;
+    if(name.startsWith(q))return 2;
+    const at=name.indexOf(q);return at<0?8:3+Math.min(at,99)/100;};
+  return items.map((item,index)=>({item,index,rank:rank(item)})).sort((a,b)=>a.rank-b.rank||a.index-b.index).map(entry=>entry.item);
+}
+function renderSuggestions(items,note){
+  const box=document.querySelector('#search-suggestions'),input=document.querySelector('#object-search');
+  suggestionItems=[];activeSuggestion=-1;
+  if(note)box.innerHTML=`<div class="suggestion is-note">${escapeHtml(note)}</div>`;
+  else if(!items||!items.length)box.innerHTML='<div class="suggestion is-note">NO JPL MATCHES</div>';
+  else{
+    box.innerHTML=items.map(item=>`<div class="suggestion" role="option" aria-selected="false" data-pdes="${escapeHtml(item.pdes)}" title="${escapeHtml(item.name||item.pdes)}"><span class="suggestion-name">${escapeHtml(item.name||item.pdes)}</span><span class="suggestion-kind">${escapeHtml(item.pdes)}</span></div>`).join('');
+    suggestionItems=items;
+  }
+  box.hidden=false;if(input)input.setAttribute('aria-expanded','true');
+}
+function hideSuggestions(){
+  const box=document.querySelector('#search-suggestions'),input=document.querySelector('#object-search');
+  if(!box)return;
+  suggestionToken++;clearTimeout(suggestionTimer);
+  if(suggestionController){suggestionController.abort();suggestionController=null;}
+  suggestionItems=[];activeSuggestion=-1;box.hidden=true;box.innerHTML='';if(input)input.setAttribute('aria-expanded','false');
+}
+function setActiveSuggestion(index){
+  const rows=[...document.querySelectorAll('#search-suggestions .suggestion')];if(!rows.length)return;
+  activeSuggestion=Math.max(0,Math.min(index,rows.length-1));
+  rows.forEach((row,i)=>{const active=i===activeSuggestion;row.setAttribute('aria-selected',active?'true':'false');if(active)row.scrollIntoView({block:'nearest'});});
+}
+function handleSearchKeydown(event){
+  const open=!document.querySelector('#search-suggestions').hidden&&suggestionItems.length>0;
+  if(event.key==='Escape'){event.preventDefault();if(open)hideSuggestions();else document.querySelector('#close-search').click();return;}
+  if(!open)return;
+  const count=suggestionItems.length;
+  if(event.key==='ArrowDown'){event.preventDefault();setActiveSuggestion((activeSuggestion+1)%count);}
+  else if(event.key==='ArrowUp'){event.preventDefault();setActiveSuggestion(activeSuggestion<0?count-1:(activeSuggestion-1+count)%count);}
+  else if(event.key==='Enter'&&activeSuggestion>=0){event.preventDefault();const row=document.querySelectorAll('#search-suggestions .suggestion')[activeSuggestion];if(row)selectSuggestion(row);}
+}
+function selectSuggestion(row){
+  const pdes=row.dataset.pdes;if(!pdes)return;
+  const input=document.querySelector('#object-search'),hint=document.querySelector('#search-hint');
+  input.value=pdes;hideSuggestions();resolveQuery(pdes,input,hint);
 }
 
 function tickSimulation() {

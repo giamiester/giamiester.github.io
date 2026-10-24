@@ -58,7 +58,7 @@
 
         <section class="tracked-card panel">
           <div class="panel-heading tracked-heading"><div><p class="eyebrow">03 / TRACKING</p><h2>Tracked objects <span class="count" id="tracked-count">14</span></h2></div><button class="add-button" id="open-search" aria-label="Add a solar system object">＋</button></div>
-          <form class="search-form" id="search-form"><label class="search-box"><span>⌕</span><input id="object-search" type="search" placeholder="Find an asteroid or comet…" autocomplete="off"/><button type="button" id="close-search" aria-label="Close search">×</button></label><div class="search-hint" id="search-hint">SEARCH JPL SMALL-BODY DATABASE</div></form>
+          <form class="search-form" id="search-form" role="search"><label class="search-box"><span>⌕</span><input id="object-search" type="search" placeholder="Find an asteroid or comet…" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-suggestions"/><button type="button" id="close-search" aria-label="Close search">×</button></label><div class="search-suggestions" id="search-suggestions" role="listbox" aria-label="JPL object suggestions" hidden></div><div class="search-hint" id="search-hint">SEARCH JPL SMALL-BODY DATABASE</div></form>
           <div class="tracked-list" id="tracked-list"></div>
           <p class="source-note">ORBIT DATA <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html" target="_blank" rel="noreferrer">JPL SSD</a> <span>·</span> SMALL BODIES <a href="https://ssd-api.jpl.nasa.gov/doc/sbdb.html" target="_blank" rel="noreferrer">SBDB API</a></p>
         </section>
