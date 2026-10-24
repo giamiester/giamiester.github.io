@@ -4,7 +4,7 @@ Orbit Desk runs in a modern browser; visitors do not need the Windows executable
 
 ## Preview on your computer
 
-From the `web-deploy` folder, run:
+From this folder, run:
 
 ```powershell
 npx wrangler pages dev .
@@ -14,14 +14,11 @@ This serves the page and its JPL proxy locally. Opening `index.html` directly or
 
 ## Publish the site
 
-GitHub Pages only serves static files; it does not execute `_worker.js`. JPL also blocks direct browser embedding, so searches need a separately deployed proxy:
+GitHub Pages only serves static files; it does not execute `_worker.js`. The standalone JPL proxy is deployed at `https://orbitdesk-jpl-proxy.giamiester-orbitdesk.workers.dev/api/sbdb`, and the `jpl-proxy-url` setting in `index.html` is configured to use it.
 
-1. From this folder, run `cd jpl-proxy`, then `npx wrangler login` and `npx wrangler deploy`.
-2. Copy the `workers.dev` URL printed by Wrangler and append `/api/sbdb`.
-3. In this folder's `index.html`, set the `jpl-proxy-url` meta tag to that full URL.
-4. Commit and push this folder's contents to `giamiester/giamiester.github.io`.
+To update the proxy later, run `npx wrangler deploy` from `jpl-proxy` while signed into the Cloudflare account.
 
-If the entire site is hosted on Cloudflare Pages instead, leave the meta tag empty; `_worker.js` serves `/api/sbdb`. Keep `textures` beside `index.html`; it contains the bundled maps and their attribution.
+If the entire site is hosted on Cloudflare Pages instead, clear the meta tag and `_worker.js` serves `/api/sbdb`. Keep `textures` beside `index.html`; it contains the bundled maps and their attribution.
 
 Three.js and JPL searches need an internet connection. Planet positions use approximate Keplerian elements; added objects use JPL osculating elements.
 
