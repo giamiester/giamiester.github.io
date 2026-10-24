@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#10131d" />
+  <title>Orbit Desk — Solar System Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main class="widget-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true"><span></span><i></i></div>
+        <div><p class="eyebrow">FIELD TERMINAL <span>·</span> SOL-01</p><h1>ORBIT<span class="title-dim">DESK</span></h1></div>
+      </div>
+      <div class="top-meta"><span class="live-pip"></span><span>LIVE TRACKING</span><time id="utc-clock">--:--:-- UTC</time></div>
+    </header>
+
+    <section class="main-grid">
+      <div class="orbit-card panel">
+        <div class="panel-heading orbit-heading">
+          <div><p class="eyebrow">01 / SYSTEM VIEW</p><h2>Solar neighborhood</h2></div>
+          <div class="view-controls" role="group" aria-label="Orbit display mode"><button class="view-btn active" data-mode="orbits">ORBITS</button><button class="view-btn" data-mode="labels">LABELS</button></div>
+        </div>
+        <div class="orbit-stage" id="orbit-stage">
+          <div class="starfield" aria-hidden="true"></div>
+          <canvas class="system-map" id="system-map" aria-label="Interactive three-dimensional solar system. Drag to orbit, scroll to zoom, and right-drag to pan."></canvas>
+          <div class="object-labels" id="object-labels" aria-hidden="true"></div>
+          <div class="map-caption"><span class="legend-dot sun-dot"></span> SUN <span class="legend-divider">/</span><span class="legend-dot planet-dot"></span> PLANETS <span class="legend-divider">/</span> ORBIT SCALE COMPRESSED</div>
+          <div class="zoom-widget"><span id="zoom-level">100%</span><button id="zoom-reset" type="button" aria-label="Reset solar system zoom" title="Reset zoom">↺</button></div>
+          <div class="map-coordinates">3D WEBGL <span>·</span> DRAG ORBIT / SCROLL ZOOM / RIGHT-DRAG PAN</div>
+        </div>
+        <div class="orbit-footer"><span><i class="status-square"></i> EPHEMERIS MODEL <b>KEPLERIAN / APPROX</b></span><span id="updated-at">CALCULATING POSITION…</span></div>
+      </div>
+
+      <aside class="side-column">
+        <section class="focus-card panel">
+          <div class="panel-heading"><div><p class="eyebrow">02 / SELECTED OBJECT</p><h2 id="selected-name">Earth</h2></div><span class="object-index" id="object-kind">TERRESTRIAL</span></div>
+          <div class="focus-orbital"><div class="focus-planet earth-art" id="focus-planet"><span></span></div><div><span class="metric-label">HELIOCENTRIC DISTANCE</span><div class="distance-value"><span id="distance">1.000</span><small>AU</small></div><span class="focus-sub" id="orbit-period">365.3 DAY ORBIT</span></div></div>
+          <div class="metric-row"><div><span class="metric-label">ORBITAL SPEED</span><strong id="orbital-speed">29.78 <small>KM/S</small></strong></div><div><span class="metric-label">ECCENTRICITY</span><strong id="eccentricity">0.0167</strong></div></div>
+          <div class="object-progress"><div class="progress-label"><span>ORBIT COMPLETE</span><span id="orbit-progress-label">00%</span></div><div class="progress-track"><div id="orbit-progress"></div></div></div>
+          <p class="object-fact" id="object-fact">A fact about the selected object will appear here.</p>
+          <div class="focus-actions"><button id="track-button" class="track-button"><span>＋</span> TRACK OBJECT</button><button id="external-link" class="external-button" title="View in JPL Horizons" aria-label="View selected object in JPL Horizons">↗</button></div>
+        </section>
+
+        <section class="tracked-card panel">
+          <div class="panel-heading tracked-heading"><div><p class="eyebrow">03 / TRACKING</p><h2>Tracked objects <span class="count" id="tracked-count">14</span></h2></div><button class="add-button" id="open-search" aria-label="Add a solar system object">＋</button></div>
+          <form class="search-form" id="search-form"><label class="search-box"><span>⌕</span><input id="object-search" type="search" placeholder="Find an asteroid or comet…" autocomplete="off"/><button type="button" id="close-search" aria-label="Close search">×</button></label><div class="search-hint" id="search-hint">SEARCH JPL SMALL-BODY DATABASE</div></form>
+          <div class="tracked-list" id="tracked-list"></div>
+          <p class="source-note">ORBIT DATA <a href="https://ssd.jpl.nasa.gov/planets/approx_pos.html" target="_blank" rel="noreferrer">JPL SSD</a> <span>·</span> SMALL BODIES <a href="https://ssd-api.jpl.nasa.gov/doc/sbdb.html" target="_blank" rel="noreferrer">SBDB API</a></p>
+        </section>
+      </aside>
+    </section>
+
+    <footer class="bottom-bar"><span>EARTH-CENTERED TIME <b id="local-date">---</b></span><span class="bottom-center"><span class="signal-bars"><i></i><i></i><i></i></span> DATA LINK NOMINAL</span><span>ORBIT DESK <b>v1.0.0</b></span></footer>
+  </main>
+  <script type="module" src="app3d.js"></script>
+</body>
+</html>
