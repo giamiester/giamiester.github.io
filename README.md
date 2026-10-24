@@ -1,22 +1,22 @@
 # Orbit Desk web version
 
-Orbit Desk can run as a static website. Visitors open the site in a modern browser; they do not need the Windows executable, Vulkan SDK, or a build step.
+Orbit Desk runs in a modern browser; visitors do not need the Windows executable, Vulkan SDK, or a build step. Use the `web-deploy` folder as the deployment root. GitHub Pages needs the separate Cloudflare Worker proxy in `web-deploy/jpl-proxy`; Cloudflare Pages can use the included `_worker.js` directly.
 
 ## Preview on your computer
 
-From this folder, run:
+From the `web-deploy` folder, run:
 
 ```powershell
-py -m http.server 8000
+npx wrangler pages dev .
 ```
 
-Then open <http://localhost:8000>. Keep the server window open while using the page. Opening `index.html` directly as a `file://` URL will not work because browsers restrict JavaScript modules on local files.
+This serves the page and its JPL proxy locally. Opening `index.html` directly or using a plain static server will not enable JPL lookup.
 
 ## Publish the site
 
-Upload the contents of the `web-deploy` folder to any static web host, such as GitHub Pages, Cloudflare Pages, or Netlify. Keep the `textures` folder beside `index.html`; it contains the bundled planetary maps and their attribution.
+For GitHub Pages, deploy `web-deploy/jpl-proxy` with Wrangler, set the resulting `/api/sbdb` URL in the `jpl-proxy-url` meta tag in `web-deploy/index.html`, then publish `web-deploy`. For Cloudflare Pages, leave the tag empty and deploy the folder directly. JPL's API policy disallows direct browser embedding, so other hosts also need a server-side proxy. Keep `textures` beside `index.html`; it contains the bundled maps and their attribution.
 
-The page loads Three.js from jsDelivr and uses NASA/JPL's Small-Body Database API when a visitor searches for an unlisted object. Those features need an internet connection. The solar-system view and the included objects otherwise run in the browser. Planet positions use approximate Keplerian elements; small-body search results use JPL osculating elements.
+Three.js and JPL searches need an internet connection. Planet positions use approximate Keplerian elements; added objects use JPL osculating elements.
 
 ## Controls
 

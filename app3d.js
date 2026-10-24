@@ -179,9 +179,10 @@ function addBodyView(body) {
   }
   let tail=null,tailInner=null;
   if (body.kind==='comet') {
-    const length=.16;
-    tail=new THREE.Mesh(new THREE.ConeGeometry(radius*.52,length,16,1,true),new THREE.MeshBasicMaterial({color:body.color,transparent:true,opacity:.24,side:THREE.DoubleSide,depthWrite:false}));
-    tailInner=new THREE.Mesh(new THREE.ConeGeometry(radius*.24,length*.76,12,1,true),new THREE.MeshBasicMaterial({color:0xdaf1ff,transparent:true,opacity:.3,side:THREE.DoubleSide,depthWrite:false}));
+    const length=Math.max(.15,radius*10);
+    tail=new THREE.Mesh(new THREE.ConeGeometry(radius*.78,length,20,1,true),new THREE.MeshBasicMaterial({color:body.color,transparent:true,opacity:.2,side:THREE.DoubleSide,depthWrite:false}));
+    tailInner=new THREE.Mesh(new THREE.ConeGeometry(radius*.34,length*.76,16,1,true),new THREE.MeshBasicMaterial({color:0xdaf1ff,transparent:true,opacity:.26,side:THREE.DoubleSide,depthWrite:false}));
+    tail.renderOrder=1;tailInner.renderOrder=2;
     root.add(tail,tailInner);
   }
   const orbitMaterial=new THREE.LineBasicMaterial({color:body.color,transparent:true,opacity:body.kind==='comet'?.2:.18,depthWrite:false});
@@ -304,7 +305,7 @@ function animate() {
   for(const [code,view] of views){
     if(!tracked.has(code))continue;
     const data=getPosition(view.body,jd),position=scenePosition(data.p);view.position.copy(position);view.root.position.copy(position);view.mesh.rotation.y+=dt*(view.body.code==='earth'?.055:.018);
-    if(view.tail||view.tailInner){const direction=position.clone().normalize();const length=Math.max(.08,view.radius*5.5);for(const tail of [view.tail,view.tailInner]){if(!tail)continue;tail.scale.set(1,tail===view.tail?1:.76,1);tail.position.copy(direction).multiplyScalar(length*.48);tail.quaternion.setFromUnitVectors(vectorUp,direction);}}
+    if(view.tail||view.tailInner){const awayFromSun=position.clone().normalize();const length=Math.max(.15,view.radius*10);for(const tail of [view.tail,view.tailInner]){if(!tail)continue;const tailLength=length*(tail===view.tail?1:.76);tail.scale.set(1,1,1);tail.position.copy(awayFromSun).multiplyScalar(view.radius*1.04+tailLength*.5);tail.quaternion.setFromUnitVectors(vectorUp,awayFromSun.clone().negate());}}
     view.label.style.display=labelsVisible?'block':'none';
     if(labelsVisible){const projected=position.clone().project(camera),rect=canvas.getBoundingClientRect();const x=(projected.x*.5+.5)*rect.width,y=(-projected.y*.5+.5)*rect.height;view.label.style.transform=`translate(${x+view.radius*40}px,${y}px)`;view.label.classList.toggle('selected',code===selected);}
   }
@@ -354,16 +355,21 @@ async function lookupObject(event) {
   event.preventDefault();const input=document.querySelector('#object-search'),hint=document.querySelector('#search-hint'),query=input.value.trim();if(!query)return;
   const known=[...bodyData,...customObjects.values()].find(body=>body.name.toLowerCase()===query.toLowerCase()||body.code.toLowerCase()===query.toLowerCase());
   if(known){tracked.add(known.code);if(!views.has(known.code)){const view=addBodyView(known);updateOrbit(view,jdNow(simDate));}selectBody(known.code);hint.textContent=`${known.name.toUpperCase()} ADDED`;input.value='';return;}
-  hint.textContent='QUERYING JPL SBDB…';
+  hint.textContent='QUERYING JPL SBDB…';input.disabled=true;
   try{
-    const url=new URL('https://ssd-api.jpl.nasa.gov/sbdb.api');url.searchParams.set('sstr',query);url.searchParams.set('full-prec','true');
-    const response=await fetch(url);if(!response.ok)throw new Error('JPL request failed');const data=await response.json();if(data.error)throw new Error(data.error);if(data.list)throw new Error('Multiple matches. Try a numbered designation, like 433.');
+    if(window.location.protocol==='file:')throw new Error('Open the site on GitHub Pages with the JPL proxy configured, or on Cloudflare Pages.');
+    const proxyUrl=document.querySelector('meta[name="jpl-proxy-url"]')?.content.trim();
+    const url=proxyUrl?new URL(proxyUrl):new URL('/api/sbdb',window.location.origin);url.searchParams.set('query',query);
+    const response=await fetch(url,{headers:{Accept:'application/json'}});let data;
+    try{data=await response.json();}catch{throw new Error(response.status===404?'No JPL proxy found. Set jpl-proxy-url or deploy the site on Cloudflare Pages.':'The JPL lookup returned an unreadable response.');}
+    if(!response.ok)throw new Error(data.error||`JPL lookup failed (${response.status}).`);if(data.error)throw new Error(data.error);if(data.list)throw new Error('Multiple matches. Try a numbered designation, like 433.');
     const orbit=Object.fromEntries((data.orbit?.elements||[]).map(item=>[item.name,Number(item.value)]));
     if(!Number.isFinite(orbit.e)||!Number.isFinite(orbit.i)||!Number.isFinite(orbit.om)||!Number.isFinite(orbit.w))throw new Error('JPL did not return enough orbital elements.');
     const body={code:`sbdb-${data.object.spkid||data.object.des}`,name:data.object.fullname||data.object.name||data.object.des,type:data.object.kind?.toUpperCase()||'SMALL BODY',kind:'small-body',color:'#b8d2e8',radius:4,fact:'Approximate osculating orbit from JPL Small-Body Database.',elements:{e:orbit.e,i:orbit.i,node:orbit.om,w:orbit.w,a:orbit.a,q:orbit.q,tp:orbit.tp,epoch:Number(data.orbit.epoch),ma:orbit.ma,n:orbit.n}};
     if(!Number.isFinite(body.elements.epoch))throw new Error('JPL did not return an orbit epoch.');
     customObjects.set(body.code,body);tracked.add(body.code);const view=addBodyView(body);updateOrbit(view,jdNow(simDate));selectBody(body.code);input.value='';hint.textContent='JPL ORBIT DATA LOADED';
-  }catch(error){hint.textContent=String(error.message||'Lookup failed').toLowerCase().includes('fetch')?'JPL LOOKUP UNAVAILABLE — CHECK CONNECTION':String(error.message||'No match found').toUpperCase();}
+  }catch(error){const message=String(error.message||'No match found');hint.textContent=message.toLowerCase().includes('fetch')?'CANNOT REACH JPL PROXY. CHECK ITS URL AND CORS SETTINGS.':message.replace(/\s+/g,' ').slice(0,88).toUpperCase();}
+  finally{input.disabled=false;}
 }
 
 function tickSimulation() {
